@@ -16,51 +16,56 @@ public class GitLabServerTest {
 
   @Test
   public void testFixEmptyAndTrimOne() throws Exception {
-    GitLabServer server = new GitLabServer("https://gitlab.com", "default", null);
+    GitLabServer server = new GitLabServer("https://gitlab.com", "default", null, null);
     server.setHooksRootUrl("https://myhooks/");
     assertThat(server.getName(),is("default"));
     assertThat(server.getServerUrl(),is("https://gitlab.com"));
     assertThat(server.getCredentialsId(),nullValue());
+    assertThat(server.getBasicAuthCredentials(), nullValue());
     assertThat(server.getHooksRootUrl(),is("https://myhooks/"));
   }
 
   @Test
   public void testFixEmptyAndTrimTwo() throws Exception {
-    GitLabServer server = new GitLabServer("     https://gitlab.com    ", "     default      ", null);
+    GitLabServer server = new GitLabServer("     https://gitlab.com    ", "     default      ", null, null);
     server.setHooksRootUrl("       https://myhooks/        ");
     assertThat(server.getName(),is("default"));
     assertThat(server.getServerUrl(),is("https://gitlab.com"));
     assertThat(server.getCredentialsId(),nullValue());
+    assertThat(server.getBasicAuthCredentials(), nullValue());
     assertThat(server.getHooksRootUrl(),is("https://myhooks/"));
   }
 
   @Test
   public void testFixEmptyAndTrimThree() throws Exception {
-    GitLabServer server = new GitLabServer(null, null, null);
+    GitLabServer server = new GitLabServer(null, null, null, null);
     server.setHooksRootUrl(null);
     assertThat(server.getName(),startsWith("gitlab-"));
     assertThat(server.getServerUrl(),is("https://gitlab.com"));
     assertThat(server.getCredentialsId(),nullValue());
+    assertThat(server.getBasicAuthCredentials(), nullValue());
     assertThat(server.getHooksRootUrl(),nullValue());
   }
 
   @Test
   public void testFixEmptyAndTrimFour() throws Exception {
-    GitLabServer server = new GitLabServer("https://whatever.com", "whatever", null);
+    GitLabServer server = new GitLabServer("https://whatever.com", "whatever", null, null);
     server.setHooksRootUrl("https://myhooks/");
     assertThat(server.getName(),is("whatever"));
     assertThat(server.getServerUrl(),is("https://whatever.com"));
     assertThat(server.getCredentialsId(),nullValue());
+    assertThat(server.getBasicAuthCredentials(), nullValue());
     assertThat(server.getHooksRootUrl(),is("https://myhooks/"));
   }
 
   @Test
   public void testFixEmptyAndTrimFive() throws Exception {
-    GitLabServer server = new GitLabServer("","","");
+    GitLabServer server = new GitLabServer("","","","");
     server.setHooksRootUrl("");
     assertThat(server.getName(),startsWith("gitlab-"));
     assertThat(server.getServerUrl(),is("https://gitlab.com"));
     assertThat(server.getCredentialsId(),is(""));
+    assertThat(server.getBasicAuthCredentials(), is(""));
     assertThat(server.getHooksRootUrl(),nullValue());
   }
 }

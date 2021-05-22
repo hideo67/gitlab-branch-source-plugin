@@ -20,6 +20,10 @@ f.entry(title: _("Credentials"), field: "credentialsId", "description": "The Per
     c.select(context: app)
 }
 
+f.entry(title: _("Basic Authentication Credentials"), field: "basicAuthCredentialsId", description: "Credentials for basic authentication") {
+	c.select(context: app)
+}
+
 f.entry(title: _("Web Hook"), field: "manageWebHooks", "description": "Do you want to automatically manage GitLab Web Hooks on Jenkins Server?") {
     f.checkbox(title: _("Manage Web Hooks"))
 }
@@ -40,7 +44,7 @@ f.validateButton(
     title: _("Test connection"),
     progress: _("Testing.."),
     method: "testConnection",
-    with: "serverUrl,credentialsId"
+    with: "serverUrl,credentialsId,basicAuthCredentialsId"
 )
 
 

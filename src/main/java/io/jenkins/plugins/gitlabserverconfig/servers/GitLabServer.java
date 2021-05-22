@@ -5,6 +5,8 @@ import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
+import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
+
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
@@ -52,6 +54,9 @@ public class GitLabServer extends AbstractDescribableImpl<GitLabServer> {
      */
     public static final CredentialsMatcher CREDENTIALS_MATCHER = CredentialsMatchers
         .instanceOf(PersonalAccessToken.class);
+
+    public static final CredentialsMatcher BASIC_AUTH_CREDENTIALS_MATCHER = CredentialsMatchers
+            .instanceOf(StandardUsernamePasswordCredentials.class);
     /**
      * Default name for community SaaS version server
      */
@@ -111,6 +116,9 @@ public class GitLabServer extends AbstractDescribableImpl<GitLabServer> {
     @NonNull
     private String credentialsId;
 
+    @NonNull
+    private String basicAuthCredentialsId;
+
     /**
      * The Jenkins root URL to use in Gitlab hooks, instead of {@link Jenkins#getRootUrl()}.
      * Useful when the main public Jenkins URL can't be accessed from Gitlab.
@@ -133,12 +141,14 @@ public class GitLabServer extends AbstractDescribableImpl<GitLabServer> {
      */
     @DataBoundConstructor
     public GitLabServer(@NonNull String serverUrl, @NonNull String name,
-        @NonNull String credentialsId) {
+        @NonNull String credentialsId,
+        @NonNull String basicAuthCredentialsId) {
         this.serverUrl = defaultIfBlank(StringUtils.trim(serverUrl), GITLAB_SERVER_URL);
         this.name = StringUtils.isBlank(name)
             ? getRandomName()
             : StringUtils.trim(name);
         this.credentialsId = credentialsId;
+        this.basicAuthCredentialsId = basicAuthCredentialsId;
     }
 
     /**
@@ -237,6 +247,27 @@ public class GitLabServer extends AbstractDescribableImpl<GitLabServer> {
     }
 
     /**
+     * Returns the credentials to use for a basic authentication in front of gitlab.
+     * @return
+     */
+    @NonNull
+    public String getBasicAuthCredentialsId() {
+        return basicAuthCredentialsId;
+    }
+
+    public StandardUsernamePasswordCredentials getBasicAuthCredentials() {
+        Jenkins jenkins = Jenkins.get();
+        jenkins.checkPermission(CredentialsProvider.USE_OWN);
+        return StringUtils.isBlank(basicAuthCredentialsId) ? null : CredentialsMatchers.firstOrNull(
+                lookupCredentials(
+                        StandardUsernamePasswordCredentials.class,
+                        jenkins,
+                        ACL.SYSTEM,
+                        fromUri(defaultIfBlank(serverUrl, GITLAB_SERVER_URL)).build()
+                        ), withId(basicAuthCredentialsId));
+    }
+
+    /**
      * @param hooksRootUrl a custom root URL, to be used in hooks instead of {@link Jenkins#getRootUrl()}.
      * Set to {@code null} for default behavior.
      */
@@ -312,8 +343,10 @@ public class GitLabServer extends AbstractDescribableImpl<GitLabServer> {
             GitLabApi gitLabApi = new GitLabApi(serverUrl, "", null, getProxyConfig(serverUrl));
             try {
                 gitLabApi.getProjectApi().getProjects(1, 1);
+                gitLabApi.close();
                 return FormValidation.ok();
             } catch (GitLabApiException e) {
+                gitLabApi.close();
                 LOGGER.log(Level.FINEST, String.format("Invalid GitLab Server Url: %s", serverUrl));
                 return FormValidation.error(Messages.GitLabServer_invalidUrl(serverUrl));
             }
@@ -354,14 +387,19 @@ public class GitLabServer extends AbstractDescribableImpl<GitLabServer> {
         @Restricted(DoNotUse.class)
         @SuppressWarnings("unused")
         public FormValidation doTestConnection(@QueryParameter String serverUrl,
-            @QueryParameter String credentialsId) {
+            @QueryParameter String credentialsId,
+            @QueryParameter String basicAuthCredentialsId) {
             PersonalAccessToken credentials = getCredentials(serverUrl, credentialsId);
+            StandardUsernamePasswordCredentials basicAuthCredentials = getBasicAuthCredentials(serverUrl, basicAuthCredentialsId);
             String privateToken = "";
             if (credentials != null) {
                 privateToken = credentials.getToken().getPlainText();
             }
             if (privateToken.equals(EMPTY_TOKEN)) {
                 GitLabApi gitLabApi = new GitLabApi(serverUrl, EMPTY_TOKEN, null, getProxyConfig(serverUrl));
+                if (basicAuthCredentials != null) {
+                    gitLabApi.enableBasicAuthentication(basicAuthCredentials.getUsername(), basicAuthCredentials.getPassword().getPlainText());
+                }
                 try {
                     /*
                     In order to validate a GitLab Server without personal access token,
@@ -380,6 +418,12 @@ public class GitLabServer extends AbstractDescribableImpl<GitLabServer> {
             } else {
 
                 GitLabApi gitLabApi = new GitLabApi(serverUrl, privateToken, null, getProxyConfig(serverUrl));
+                if (basicAuthCredentials != null) {
+                    gitLabApi.enableBasicAuthentication(basicAuthCredentials.getUsername(), basicAuthCredentials.getPassword().getPlainText());
+                    LOGGER.log(Level.INFO, "BasicAuthCredentials was found: " + basicAuthCredentials.getUsername());
+                } else {
+                    LOGGER.log(Level.INFO, "BasicAuthCredentials was not found");
+                }
                 try {
                     User user = gitLabApi.getUserApi().getCurrentUser();
                     LOGGER.log(Level.FINEST, String
@@ -431,6 +475,44 @@ public class GitLabServer extends AbstractDescribableImpl<GitLabServer> {
                     ACL.SYSTEM,
                     fromUri(defaultIfBlank(serverUrl, GITLAB_SERVER_URL)).build()),
                 withId(credentialsId)
+            );
+        }
+
+        /**
+         * Stapler form completion.
+         *
+         * @param serverUrl the server URL.
+         * @param basicAuthCredentialsId the credentials Id
+         * @return the available credentials.
+         */
+        @Restricted(NoExternalUse.class) // stapler
+        @SuppressWarnings("unused")
+        public ListBoxModel doFillBasicAuthCredentialsIdItems(@QueryParameter String serverUrl,
+            @QueryParameter String basicAuthCredentialsId) {
+            Jenkins jenkins = Jenkins.get();
+            if (!jenkins.hasPermission(Jenkins.ADMINISTER)) {
+                return new StandardListBoxModel().includeCurrentValue(basicAuthCredentialsId);
+            }
+            return new StandardListBoxModel()
+                .includeEmptyValue()
+                .includeMatchingAs(ACL.SYSTEM,
+                    jenkins,
+                    StandardCredentials.class,
+                    fromUri(serverUrl).build(),
+                    BASIC_AUTH_CREDENTIALS_MATCHER
+                );
+        }
+
+        private StandardUsernamePasswordCredentials getBasicAuthCredentials(String serverUrl, String basicAuthCredentialsId) {
+            Jenkins jenkins = Jenkins.get();
+            jenkins.checkPermission(Jenkins.ADMINISTER);
+            return StringUtils.isBlank(basicAuthCredentialsId) ? null : CredentialsMatchers.firstOrNull(
+                lookupCredentials(
+                    StandardUsernamePasswordCredentials.class,
+                    jenkins,
+                    ACL.SYSTEM,
+                    fromUri(defaultIfBlank(serverUrl, GITLAB_SERVER_URL)).build()),
+                withId(basicAuthCredentialsId)
             );
         }
 

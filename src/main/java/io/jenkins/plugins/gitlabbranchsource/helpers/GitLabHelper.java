@@ -1,5 +1,6 @@
 package io.jenkins.plugins.gitlabbranchsource.helpers;
 
+import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.damnhandy.uri.template.UriTemplate;
 import com.damnhandy.uri.template.UriTemplateBuilder;
 import com.damnhandy.uri.template.impl.Operator;
@@ -24,10 +25,18 @@ public class GitLabHelper {
         if (server != null) {
             PersonalAccessToken credentials = server.getCredentials();
             String serverUrl = server.getServerUrl();
+            GitLabApi gitlabApi;
             if (credentials != null) {
-                return new GitLabApi(serverUrl, credentials.getToken().getPlainText(), null, getProxyConfig(serverUrl));
+                gitlabApi = new GitLabApi(serverUrl, credentials.getToken().getPlainText(), null, getProxyConfig(serverUrl));
+            } else {
+                gitlabApi = new GitLabApi(serverUrl, GitLabServer.EMPTY_TOKEN, null, getProxyConfig(serverUrl));
             }
-            return new GitLabApi(serverUrl, GitLabServer.EMPTY_TOKEN, null, getProxyConfig(serverUrl));
+            StandardUsernamePasswordCredentials basicAuthCredentials = server.getBasicAuthCredentials();
+            if (basicAuthCredentials != null)
+            {
+                gitlabApi.enableBasicAuthentication(basicAuthCredentials.getUsername(), basicAuthCredentials.getPassword().getPlainText());
+            }
+            return gitlabApi;
         }
         throw new IllegalStateException(
             String.format("No server found with the name: %s", serverName));

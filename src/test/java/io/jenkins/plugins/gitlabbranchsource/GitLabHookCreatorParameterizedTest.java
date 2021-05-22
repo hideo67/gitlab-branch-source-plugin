@@ -61,7 +61,7 @@ public class GitLabHookCreatorParameterizedTest {
             proto -> {
                 String expected = proto + jenkinsUrl + expectedPath;
                 JenkinsLocationConfiguration.get().setUrl("http://whatever");
-                GitLabServer server = new GitLabServer("https://gitlab.com", "GitLab", null);
+                GitLabServer server = new GitLabServer("https://gitlab.com", "GitLab", null, null);
                 server.setHooksRootUrl(proto + jenkinsUrl);
                 String hookUrl = GitLabHookCreator.getHookUrl(server, hookType);
                 GitLabHookCreator.checkURL(hookUrl);
